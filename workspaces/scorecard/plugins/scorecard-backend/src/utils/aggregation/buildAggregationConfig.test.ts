@@ -217,5 +217,60 @@ describe('buildAggregationConfig', () => {
         thresholds: undefined,
       },
     });
+    expect(result.filter).toBeUndefined();
+  });
+
+  it('should map filter.status for scalar KPIs', () => {
+    const rootConfig = mockServices.rootConfig({
+      data: {
+        scorecard: {
+          aggregationKPIs: {
+            totalCriticalPrs: {
+              title: 'Total Critical PRs',
+              description: 'Sum of open PRs for entities in error status',
+              type: aggregationTypes.sum,
+              metricId: 'github.openPRs',
+              filter: {
+                status: 'error',
+              },
+            },
+          },
+        },
+      },
+    });
+    const config = rootConfig.getConfig(
+      `${AGGREGATION_KPIS_CONFIG_PATH}.totalCriticalPrs`,
+    );
+
+    const result = buildAggregationConfig('totalCriticalPrs', { config });
+
+    expect(result.filter).toEqual({ status: 'error' });
+  });
+
+  it('should not map filter for statusGrouped KPIs even when configured', () => {
+    const rootConfig = mockServices.rootConfig({
+      data: {
+        scorecard: {
+          aggregationKPIs: {
+            statusKpi: {
+              title: 'Status breakdown',
+              description: 'Counts by status',
+              type: aggregationTypes.statusGrouped,
+              metricId: 'github.openPRs',
+              filter: {
+                status: 'error',
+              },
+            },
+          },
+        },
+      },
+    });
+    const config = rootConfig.getConfig(
+      `${AGGREGATION_KPIS_CONFIG_PATH}.statusKpi`,
+    );
+
+    const result = buildAggregationConfig('statusKpi', { config });
+
+    expect(result.filter).toBeUndefined();
   });
 });

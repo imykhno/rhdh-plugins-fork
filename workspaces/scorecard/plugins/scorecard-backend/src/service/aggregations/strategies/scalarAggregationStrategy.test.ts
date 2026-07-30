@@ -142,6 +142,32 @@ describe('ScalarAggregationStrategy', () => {
       entityRefs,
       metric.id,
       'sum',
+      undefined,
+    );
+  });
+
+  it('should forward filter.status to the scalar loader', async () => {
+    const filteredConfig = mockScalarAggregationConfig(aggregationTypes.sum, {
+      id: 'totalCriticalPrs',
+      metricId: metric.id,
+      filter: { status: 'error' },
+      options: {
+        thresholds: mockFirstThresholds,
+      },
+    });
+
+    await strategy.aggregate({
+      metric,
+      entityRefs,
+      thresholds: mockFirstThresholds,
+      aggregationConfig: filteredConfig,
+    });
+
+    expect(loader.loadScalarMetricByEntityRefs).toHaveBeenCalledWith(
+      entityRefs,
+      metric.id,
+      'sum',
+      { status: 'error' },
     );
   });
 

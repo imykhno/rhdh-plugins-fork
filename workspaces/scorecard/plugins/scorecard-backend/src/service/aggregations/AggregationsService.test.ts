@@ -305,6 +305,45 @@ describe('AggregationsService', () => {
       );
     });
 
+    it('should parse filter.status for scalar KPIs from scorecard.aggregationKPIs', () => {
+      const config = mockServices.rootConfig({
+        data: {
+          scorecard: {
+            aggregationKPIs: {
+              totalCriticalPrs: {
+                title: 'Total Critical PRs',
+                description: 'Sum of open PRs for entities in error status',
+                type: aggregationTypes.sum,
+                metricId: 'github.openPRs',
+                filter: {
+                  status: 'error',
+                },
+              },
+            },
+          },
+        },
+      });
+
+      const serviceWithConfig = new AggregationsService({
+        config,
+        database,
+        logger,
+      });
+
+      expect(
+        serviceWithConfig.getAggregationConfig(
+          'totalCriticalPrs',
+          metricProvidersRegistry,
+        ),
+      ).toEqual(
+        expect.objectContaining({
+          id: 'totalCriticalPrs',
+          type: aggregationTypes.sum,
+          filter: { status: 'error' },
+        }),
+      );
+    });
+
     it('should return cached config on repeated lookup for configured KPIs', () => {
       const config = mockServices.rootConfig({
         data: {

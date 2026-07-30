@@ -61,13 +61,19 @@ export class AggregatedMetricMapper {
     metric: Metric,
     aggregationConfig: ValidatedAggregationConfig,
   ): AggregationMetadata {
-    return {
+    const metadata: AggregationMetadata = {
       type: metric.type,
       history: metric.history,
       title: aggregationConfig.title,
       description: aggregationConfig.description,
       aggregationType: aggregationConfig.type,
     };
+
+    if ('filter' in aggregationConfig && aggregationConfig.filter) {
+      metadata.filter = aggregationConfig.filter;
+    }
+
+    return metadata;
   }
 
   static toAggregatedMetricResult(
