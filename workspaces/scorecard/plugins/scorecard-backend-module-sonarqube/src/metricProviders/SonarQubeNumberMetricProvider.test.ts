@@ -14,11 +14,16 @@
  * limitations under the License.
  */
 
-import { ConfigReader } from '@backstage/config';
-import type { Entity } from '@backstage/catalog-model';
-
-import { SonarQubeNumberMetricProvider } from './SonarQubeNumberMetricProvider';
 import { mockServices } from '@backstage/backend-test-utils';
+import { CATALOG_FILTER_EXISTS } from '@backstage/catalog-client';
+
+import { sonarqubeEntity } from '../../__fixtures__/sonarqubeEntity';
+import { SonarQubeNumberMetricProvider } from './SonarQubeNumberMetricProvider';
+import {
+  SONARQUBE_METRIC_CONFIG,
+  SONARQUBE_NUMBER_THRESHOLDS,
+  SONARQUBE_PROJECT_KEY_ANNOTATION,
+} from './SonarQubeConfig';
 
 jest.mock('../clients/SonarQubeClient');
 
@@ -34,23 +39,36 @@ beforeEach(() => {
   }));
 });
 
-const mockConfig = new ConfigReader({});
+const mockConfig = mockServices.rootConfig.mock();
 const mockLogger = mockServices.logger.mock();
 
-function entity(projectKey = 'my-project'): Entity {
-  return {
-    apiVersion: 'backstage.io/v1alpha1',
-    kind: 'Component',
-    metadata: {
-      name: 'my-service',
-      annotations: { 'sonarqube.org/project-key': projectKey },
-    },
-  } as Entity;
-}
-
 describe('SonarQubeNumberMetricProvider', () => {
+  describe('getProviderDatasourceId', () => {
+    it('should return sonarqube datasource id', () => {
+      const provider = SonarQubeNumberMetricProvider.fromConfig(
+        mockConfig,
+        mockLogger,
+        'openIssues',
+      );
+      expect(provider.getProviderDatasourceId()).toBe('sonarqube');
+    });
+  });
+
+  describe('getProviderId', () => {
+    it('should return sonarqube.openIssues id for openIssues metric', () => {
+      const provider = SonarQubeNumberMetricProvider.fromConfig(
+        mockConfig,
+        mockLogger,
+        'openIssues',
+      );
+      expect(provider.getProviderId()).toBe(
+        SONARQUBE_METRIC_CONFIG.openIssues.id,
+      );
+    });
+  });
+
   describe('getMetrics', () => {
-    it('should create provider with default thresholds on metric', () => {
+    it('should return openIssues metric with default thresholds', () => {
       const provider = SonarQubeNumberMetricProvider.fromConfig(
         mockConfig,
         mockLogger,
@@ -58,8 +76,28 @@ describe('SonarQubeNumberMetricProvider', () => {
       );
       const metrics = provider.getMetrics();
       expect(metrics).toHaveLength(1);
-      expect(metrics[0].thresholds).toBeDefined();
-      expect(metrics[0].thresholds.rules).toBeDefined();
+      expect(metrics[0]).toEqual({
+        id: SONARQUBE_METRIC_CONFIG.openIssues.id,
+        title: SONARQUBE_METRIC_CONFIG.openIssues.title,
+        thresholds: SONARQUBE_NUMBER_THRESHOLDS.openIssues,
+        description: SONARQUBE_METRIC_CONFIG.openIssues.description,
+        type: 'number',
+        history: true,
+      });
+    });
+  });
+
+  describe('getCatalogFilter', () => {
+    it('should require sonarqube project-key annotation', () => {
+      const provider = SonarQubeNumberMetricProvider.fromConfig(
+        mockConfig,
+        mockLogger,
+        'openIssues',
+      );
+      expect(provider.getCatalogFilter()).toEqual({
+        [`metadata.annotations.${SONARQUBE_PROJECT_KEY_ANNOTATION}`]:
+          CATALOG_FILTER_EXISTS,
+      });
     });
   });
 
@@ -72,7 +110,7 @@ describe('SonarQubeNumberMetricProvider', () => {
         'openIssues',
       );
 
-      const results = await provider.calculateMetrics(entity());
+      const results = await provider.calculateMetrics(sonarqubeEntity());
 
       expect(results.get(provider.getProviderId())).toBe(42);
       expect(mockGetOpenIssuesCount).toHaveBeenCalledWith(
@@ -94,7 +132,7 @@ describe('SonarQubeNumberMetricProvider', () => {
       ['codeCoverage', 'coverage', 82.5],
       ['codeDuplications', 'duplicated_lines_density', 3.2],
     ] as const)(
-      'should call getMeasures with %s API key for %s metric',
+      'should return measure value when metric is %s',
       async (metricId, apiKey, value) => {
         mockGetMeasures.mockResolvedValue({ [apiKey]: value });
         const provider = SonarQubeNumberMetricProvider.fromConfig(
@@ -103,7 +141,7 @@ describe('SonarQubeNumberMetricProvider', () => {
           metricId,
         );
 
-        const results = await provider.calculateMetrics(entity());
+        const results = await provider.calculateMetrics(sonarqubeEntity());
 
         expect(results.get(provider.getProviderId())).toBe(value);
         expect(mockGetMeasures).toHaveBeenCalledWith(
@@ -123,25 +161,11 @@ describe('SonarQubeNumberMetricProvider', () => {
         'openIssues',
       );
 
-      await provider.calculateMetrics(entity('internal/my-project'));
+      await provider.calculateMetrics(sonarqubeEntity('internal/my-project'));
 
       expect(mockGetOpenIssuesCount).toHaveBeenCalledWith(
         'my-project',
         'internal',
-      );
-    });
-
-    it('should throw when annotation is missing', async () => {
-      const provider = SonarQubeNumberMetricProvider.fromConfig(
-        mockConfig,
-        mockLogger,
-        'openIssues',
-      );
-      const e = entity();
-      delete e.metadata.annotations!['sonarqube.org/project-key'];
-
-      await expect(provider.calculateMetrics(e)).rejects.toThrow(
-        "Missing annotation 'sonarqube.org/project-key'",
       );
     });
 
@@ -153,8 +177,39 @@ describe('SonarQubeNumberMetricProvider', () => {
         'openIssues',
       );
 
-      const results = await provider.calculateMetrics(entity());
+      const results = await provider.calculateMetrics(sonarqubeEntity());
       expect(results.get(provider.getProviderId())).toBe(0);
+    });
+
+    it('should return undefined when requested measure key is missing', async () => {
+      mockGetMeasures.mockResolvedValue({});
+      const provider = SonarQubeNumberMetricProvider.fromConfig(
+        mockConfig,
+        mockLogger,
+        'securityRating',
+      );
+
+      const results = await provider.calculateMetrics(sonarqubeEntity());
+
+      expect(results.get(provider.getProviderId())).toBeUndefined();
+      expect(mockGetMeasures).toHaveBeenCalledWith(
+        'my-project',
+        ['security_rating'],
+        undefined,
+      );
+    });
+
+    it('should propagate error when client rejects', async () => {
+      mockGetOpenIssuesCount.mockRejectedValue(new Error('API down'));
+      const provider = SonarQubeNumberMetricProvider.fromConfig(
+        mockConfig,
+        mockLogger,
+        'openIssues',
+      );
+
+      await expect(
+        provider.calculateMetrics(sonarqubeEntity()),
+      ).rejects.toThrow('API down');
     });
   });
 });
